@@ -1,10 +1,26 @@
 {
   "expo": {
-    "name": "Flat Tiffin",
-    "slug": "flat-tiffin",
+    "name": "Tiffin Mate",
+    "slug": "tiffin-mate",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
-    "platforms": ["ios", "android"]
+    "platforms": ["ios", "android"],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#5b6af0"
+    },
+    "android": {
+      "package": "com.tanishq.tiffinmate",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#5b6af0"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.tanishq.tiffinmate"
+    }
   }
 }
