@@ -9,7 +9,7 @@ import AdminScreen from './screens/AdminScreen';
 import LoginScreen from './screens/LoginScreen';
 import { ThemeContext, LIGHT, DARK } from './theme';
 import { AuthProvider, useAuth } from './context/AuthContext';
-
+import { ActivityIndicator } from 'react-native';
 const Tab = createBottomTabNavigator();
 
 const ICONS = {
@@ -62,7 +62,16 @@ function TabNavigator() {
 }
 
 function RootNavigator() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f7f8fc' }}>
+        <ActivityIndicator size="large" color="#5b6af0" />
+      </View>
+    );
+  }
+
   return user ? <TabNavigator /> : <LoginScreen />;
 }
 

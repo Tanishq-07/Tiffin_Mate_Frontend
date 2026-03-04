@@ -4,11 +4,29 @@ import {
   Alert, ScrollView, StatusBar, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path, Circle, Line } from 'react-native-svg';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { BASE_URL } from '../config';
+
+const EyeOpen = ({ color }) => (
+  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <Path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z"
+      stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="2" />
+  </Svg>
+);
+
+const EyeOff = ({ color }) => (
+  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <Path d="M17.94 17.94A10.07 10.07 0 0112 20C5 20 1 12 1 12A18.45 18.45 0 015.06 5.06M9.9 4.24A9.12 9.12 0 0112 4C19 4 23 12 23 12A18.5 18.5 0 0120.49 16.1M14.12 14.12A3 3 0 119.88 9.88"
+      stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Line x1="1" y1="1" x2="23" y2="23"
+      stroke={color} strokeWidth="2" strokeLinecap="round" />
+  </Svg>
+);
 
 export default function AdminScreen() {
   const { C, dark, setDark } = useTheme();
@@ -20,6 +38,7 @@ export default function AdminScreen() {
   const [users, setUsers] = useState([]);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
   const [fullPrice, setFullPrice] = useState('');
   const [halfPrice, setHalfPrice] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -51,6 +70,7 @@ export default function AdminScreen() {
       await axios.post(`${BASE_URL}/admin/users`, { name: n, password: p }, authHeader);
       setNewUserName('');
       setNewUserPass('');
+      setShowNewPass(false);
       const res = await axios.get(`${BASE_URL}/admin/users`, authHeader);
       setUsers(res.data.users);
       Alert.alert('✅ Done', `${n} added — they can now log in and appear in summary`);
@@ -62,7 +82,7 @@ export default function AdminScreen() {
   const removeUser = (name) => {
     Alert.alert(
       'Remove User',
-      `Remove ${name}?\n\nThey won't be able to log in and will be removed from the monthly summary.`,
+      `Remove @${name}?\n\nThey won't be able to log in and will be removed from the monthly summary.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -114,7 +134,7 @@ export default function AdminScreen() {
 
       <ScrollView contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
 
-        {/* Users = Tiffin Members */}
+        {/* Users Section */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>👥 Users & Tiffin Members</Text>
           <Text style={s.sectionHint}>
@@ -131,7 +151,7 @@ export default function AdminScreen() {
                 </View>
                 <View style={s.userInfo}>
                   <Text style={s.userName}>{u.name}</Text>
-                  <Text style={s.userMeta}>Can login · shown in summary</Text>
+                  <Text style={s.userMeta}>@{u.name.toLowerCase()} · member</Text>
                 </View>
                 <TouchableOpacity style={s.removeBtn} onPress={() => removeUser(u.name)}>
                   <Text style={s.removeBtnText}>✕</Text>
@@ -142,6 +162,7 @@ export default function AdminScreen() {
 
           <View style={s.divider} />
           <Text style={s.subLabel}>ADD NEW USER</Text>
+
           <TextInput
             style={s.input}
             placeholder="Name"
@@ -150,14 +171,27 @@ export default function AdminScreen() {
             onChangeText={setNewUserName}
             autoCapitalize="words"
           />
-          <TextInput
-            style={[s.input, { marginTop: 8 }]}
-            placeholder="Password"
-            placeholderTextColor={C.muted}
-            value={newUserPass}
-            onChangeText={setNewUserPass}
-            secureTextEntry
-          />
+
+          <View style={[s.inputRow, { marginTop: 8 }]}>
+            <TextInput
+              style={s.inputFlex}
+              placeholder="Password"
+              placeholderTextColor={C.muted}
+              value={newUserPass}
+              onChangeText={setNewUserPass}
+              secureTextEntry={!showNewPass}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={s.eyeBtn}
+              onPress={() => setShowNewPass(!showNewPass)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.6}
+            >
+              {showNewPass ? <EyeOff color={C.muted} /> : <EyeOpen color={C.muted} />}
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={[s.saveBtn, loadingUsers && { opacity: 0.6 }]}
             onPress={addUser}
@@ -170,7 +204,7 @@ export default function AdminScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Prices */}
+        {/* Prices Section */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>💰 Tiffin Prices</Text>
 
@@ -226,7 +260,10 @@ const makeStyles = (C) => StyleSheet.create({
     borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center',
   },
   themeBtnText: { fontSize: 18 },
-  logoutBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' },
+  logoutBtn: {
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 10, backgroundColor: '#fee2e2',
+  },
   logoutText: { fontSize: 12, fontWeight: '700', color: '#dc2626' },
 
   container: { padding: 20, paddingBottom: 48 },
@@ -272,7 +309,19 @@ const makeStyles = (C) => StyleSheet.create({
     borderWidth: 1.5, borderColor: C.border,
     padding: 13, fontSize: 15, color: C.text,
   },
-  inputLabel: { fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 0.8, marginBottom: 6, marginTop: 12 },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.bg, borderRadius: 12,
+    borderWidth: 1.5, borderColor: C.border,
+    paddingRight: 4,
+  },
+  inputFlex: { flex: 1, padding: 13, fontSize: 15, color: C.text },
+  eyeBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+
+  inputLabel: {
+    fontSize: 11, fontWeight: '700', color: C.muted,
+    letterSpacing: 0.8, marginBottom: 6, marginTop: 12,
+  },
   saveBtn: {
     backgroundColor: C.accent, borderRadius: 12,
     padding: 14, alignItems: 'center', marginTop: 16,
