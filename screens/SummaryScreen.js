@@ -8,7 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme';
-import { BASE_URL, MEMBERS } from '../config';
+import { useAuth } from '../context/AuthContext';
+import { BASE_URL } from '../config';
 
 const MONTH_NAMES = ['January','February','March','April','May','June',
   'July','August','September','October','November','December'];
@@ -45,9 +46,14 @@ function groupByDay(orders) {
 
 export default function SummaryScreen() {
   const { dark, setDark, C } = useTheme();
+  const { user } = useAuth();
   const s = makeStyles(C);
+  const isAdmin = user?.role === 'admin';
+
+  const authHeader = { headers: { Authorization: `Bearer ${user.token}` } };
 
   const [summary, setSummary] = useState(null);
+  const [members, setMembers] = useState([]);
   const [prices, setPrices] = useState({ full: 80, half: 40 });
   const [loading, setLoading] = useState(false);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -55,18 +61,17 @@ export default function SummaryScreen() {
   const [expanded, setExpanded] = useState({});
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 60], outputRange: [1, 0], extrapolate: 'clamp',
-  });
-  const headerTranslate = scrollY.interpolate({
-    inputRange: [0, 60], outputRange: [0, -20], extrapolate: 'clamp',
-  });
+  const headerOpacity = scrollY.interpolate({ inputRange: [0, 60], outputRange: [1, 0], extrapolate: 'clamp' });
+  const headerTranslate = scrollY.interpolate({ inputRange: [0, 60], outputRange: [0, -20], extrapolate: 'clamp' });
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${BASE_URL}/orders/summary`, { params: { month, year } });
+      const res = await axios.get(`${BASE_URL}/orders/summary`,
+        { params: { month, year }, ...authHeader }
+      );
       setSummary(res.data.summary);
+      setMembers(res.data.members || Object.keys(res.data.summary));
       if (res.data.prices) setPrices(res.data.prices);
     } catch (err) {
       Alert.alert('Error', 'Could not fetch summary. Is backend running?');
@@ -81,37 +86,28 @@ export default function SummaryScreen() {
     setExpanded((prev) => ({ ...prev, [name]: !prev[name] }));
 
   const handleDelete = (id, label) => {
-    Alert.alert(
-      'Delete Order',
-      `Remove "${label}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            try {
-              await axios.delete(`${BASE_URL}/orders/${id}`);
-              fetchSummary();
-            } catch (err) {
-              Alert.alert('Error', 'Could not delete order.');
-            }
-          },
+    Alert.alert('Delete Order', `Remove "${label}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await axios.delete(`${BASE_URL}/orders/${id}`, authHeader);
+            fetchSummary();
+          } catch (err) {
+            Alert.alert('Error', 'Could not delete order.');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const totalAll = summary
-    ? MEMBERS.reduce((sum, n) => sum + (summary[n]?.total || 0), 0)
+    ? Object.values(summary).reduce((sum, d) => sum + (d?.total || 0), 0)
     : 0;
 
-  // Pill with optional inline delete button next to it
   const TypePill = ({ type, id, label }) => {
-    if (!type) return (
-      <View style={s.pillEmpty}>
-        <Text style={s.pillEmptyText}>—</Text>
-      </View>
-    );
+    if (!type) return <View style={s.pillEmpty}><Text style={s.pillEmptyText}>—</Text></View>;
     return (
       <View style={s.pillRow}>
         <View style={[s.pill, type === 'full' ? s.pillFull : s.pillHalf]}>
@@ -138,8 +134,12 @@ export default function SummaryScreen() {
 
       <View style={s.topBar}>
         <Animated.View style={{ opacity: headerOpacity, transform: [{ translateY: headerTranslate }] }}>
-          <Text style={s.headerTitle}>Summary</Text>
-          <Text style={s.headerSub}>Monthly tiffin overview</Text>
+          <Text style={s.headerTitle}>
+            {isAdmin ? 'All Summaries' : 'My Summary'}
+          </Text>
+          <Text style={s.headerSub}>
+            {isAdmin ? 'Monthly overview for all members' : `Viewing as ${user.name}`}
+          </Text>
         </Animated.View>
         <TouchableOpacity style={s.themeBtn} onPress={() => setDark(!dark)}>
           <Text style={s.themeBtnText}>{dark ? '☀️' : '🌙'}</Text>
@@ -193,15 +193,20 @@ export default function SummaryScreen() {
           <ActivityIndicator size="large" color={C.accent} style={{ marginTop: 40 }} />
         ) : summary ? (
           <>
-            <View style={s.grandTotal}>
-              <Text style={s.grandTotalLabel}>Total this month</Text>
-              <Text style={s.grandTotalValue}>₹{totalAll}</Text>
-            </View>
+            {/* Grand total — show for admin or if member has orders */}
+            {(isAdmin || totalAll > 0) && (
+              <View style={s.grandTotal}>
+                <Text style={s.grandTotalLabel}>
+                  {isAdmin ? 'Total this month (all)' : 'Your total this month'}
+                </Text>
+                <Text style={s.grandTotalValue}>₹{totalAll}</Text>
+              </View>
+            )}
 
-            {MEMBERS.map((name) => {
+            {members.map((name) => {
               const data = summary[name] || { full: 0, half: 0, total: 0, orders: [] };
               const isOpen = expanded[name];
-              const grouped = groupByDay(data.orders);
+              const grouped = groupByDay(data.orders || []);
 
               return (
                 <TouchableOpacity
@@ -243,7 +248,6 @@ export default function SummaryScreen() {
                             <Text style={[s.tableHeaderText, { flex: 1 }]}>🌅 Morning</Text>
                             <Text style={[s.tableHeaderText, { flex: 1 }]}>🌙 Night</Text>
                           </View>
-
                           {grouped.map((row, i) => (
                             <View key={i} style={[s.tableRow, i % 2 === 0 && s.tableRowAlt]}>
                               <Text style={s.tableDate}>{formatOrderDate(row.date)}</Text>
@@ -272,7 +276,7 @@ export default function SummaryScreen() {
             })}
           </>
         ) : (
-          <Text style={s.empty}>No data yet.</Text>
+          <Text style={s.empty}>No orders yet this month.</Text>
         )}
       </Animated.ScrollView>
     </SafeAreaView>
@@ -283,28 +287,21 @@ const makeStyles = (C) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   topBar: {
     flexDirection: 'row', alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 22,
+    justifyContent: 'space-between', paddingHorizontal: 22,
     paddingTop: Platform.OS === 'android' ? 14 : 10,
-    paddingBottom: 12,
-    backgroundColor: C.headerBg,
+    paddingBottom: 12, backgroundColor: C.headerBg,
   },
   headerTitle: { fontSize: 26, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
   headerSub: { fontSize: 12, color: C.subtext, marginTop: 2 },
   themeBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: C.card, borderWidth: 1,
-    borderColor: C.border, alignItems: 'center',
-    justifyContent: 'center', marginTop: 2,
+    width: 40, height: 40, borderRadius: 20, backgroundColor: C.card,
+    borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center',
   },
   themeBtnText: { fontSize: 18 },
   container: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 48 },
-
   pricesBanner: {
-    backgroundColor: C.card, borderRadius: 18,
-    padding: 16, marginBottom: 14,
-    borderWidth: 1, borderColor: C.border,
-    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.card, borderRadius: 18, padding: 16, marginBottom: 14,
+    borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center',
   },
   pricesBannerTitle: {
     fontSize: 10, fontWeight: '700', color: C.muted,
@@ -315,12 +312,9 @@ const makeStyles = (C) => StyleSheet.create({
   priceChipLabel: { fontSize: 11, color: C.subtext, marginBottom: 2 },
   priceChipValue: { fontSize: 20, fontWeight: '800', color: C.accent },
   priceDivider: { width: 1, height: 32, backgroundColor: C.border },
-
   monthSelector: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: C.card, borderRadius: 14,
-    padding: 8, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: C.card, borderRadius: 14, padding: 8, marginBottom: 10,
     borderWidth: 1, borderColor: C.border,
   },
   arrowBtn: { padding: 8, paddingHorizontal: 14 },
@@ -328,62 +322,39 @@ const makeStyles = (C) => StyleSheet.create({
   monthCenter: { alignItems: 'center' },
   monthName: { fontSize: 17, fontWeight: '700', color: C.text },
   monthYear: { fontSize: 11, color: C.muted, marginTop: 1 },
-
   refreshBtn: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 16, marginBottom: 14 },
   refreshText: { color: C.accent, fontSize: 13, fontWeight: '600' },
-
   grandTotal: {
-    backgroundColor: C.accent, borderRadius: 16,
-    padding: 16, flexDirection: 'row',
-    justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 14,
+    backgroundColor: C.accent, borderRadius: 16, padding: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14,
   },
   grandTotalLabel: { fontSize: 13, fontWeight: '600', color: '#ffffffcc' },
   grandTotalValue: { fontSize: 26, fontWeight: '900', color: '#fff' },
-
   card: {
-    backgroundColor: C.card, borderRadius: 18,
-    borderWidth: 1, borderColor: C.border,
-    marginBottom: 12, overflow: 'hidden',
+    backgroundColor: C.card, borderRadius: 18, borderWidth: 1,
+    borderColor: C.border, marginBottom: 12, overflow: 'hidden',
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   cardAvatar: {
-    width: 46, height: 46, borderRadius: 23,
-    backgroundColor: C.accentSoft, alignItems: 'center',
-    justifyContent: 'center', marginRight: 12,
+    width: 46, height: 46, borderRadius: 23, backgroundColor: C.accentSoft,
+    alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
   cardAvatarText: { fontSize: 18, fontWeight: '800', color: C.accent },
   cardInfo: { flex: 1 },
   cardName: { fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 5 },
   cardBadgeRow: { flexDirection: 'row', gap: 6 },
-  badge: {
-    backgroundColor: C.accentSoft, borderRadius: 6,
-    paddingVertical: 4, paddingHorizontal: 9,
-  },
+  badge: { backgroundColor: C.accentSoft, borderRadius: 6, paddingVertical: 4, paddingHorizontal: 9 },
   badgeText: { fontSize: 12, color: C.accent, fontWeight: '700' },
   cardRight: { alignItems: 'flex-end' },
   cardTotal: { fontSize: 21, fontWeight: '800', color: C.accent },
   expandHint: { fontSize: 11, color: C.muted, marginTop: 4 },
-
   detail: { paddingHorizontal: 14, paddingBottom: 16 },
   detailDivider: { height: 1, backgroundColor: C.border, marginBottom: 12 },
-
-  tableHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 4, marginBottom: 6,
-  },
-  tableHeaderText: {
-    fontSize: 10, fontWeight: '700', color: C.muted,
-    letterSpacing: 1.1, textTransform: 'uppercase',
-  },
-  tableRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, borderRadius: 8, paddingHorizontal: 4,
-  },
+  tableHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, marginBottom: 6 },
+  tableHeaderText: { fontSize: 10, fontWeight: '700', color: C.muted, letterSpacing: 1.1, textTransform: 'uppercase' },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderRadius: 8, paddingHorizontal: 4 },
   tableRowAlt: { backgroundColor: C.cardAlt },
   tableDate: { fontSize: 13, color: C.subtext, fontWeight: '600', width: 90 },
-
-  // Pill + delete button sit side by side in a row
   pillRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pill: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20, alignSelf: 'flex-start' },
   pillFull: { backgroundColor: '#d1fae5' },
@@ -393,13 +364,11 @@ const makeStyles = (C) => StyleSheet.create({
   pillHalfText: { color: '#9d174d' },
   pillEmpty: { paddingVertical: 4, paddingHorizontal: 10 },
   pillEmptyText: { fontSize: 13, color: C.muted },
-
   deleteBtn: {
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center',
   },
   deleteBtnText: { fontSize: 9, color: '#dc2626', fontWeight: '800' },
-
   noOrders: { color: C.muted, fontSize: 14, textAlign: 'center', padding: 12 },
   empty: { textAlign: 'center', color: C.muted, marginTop: 60, fontSize: 15 },
 });

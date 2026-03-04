@@ -12,5 +12,5 @@ export const MEMBERS = [
   'Praful',
 ];
 
-// export const BASE_URL = 'http://192.168.1.71:3000';
-export const BASE_URL = 'https://tiffinmatebackend-production.up.railway.app';
+export const BASE_URL = 'http://192.168.29.25:3000';
+// export const BASE_URL = 'https://tiffinmatebackend-production.up.railway.app';

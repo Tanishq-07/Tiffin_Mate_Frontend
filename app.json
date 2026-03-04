@@ -5,7 +5,10 @@
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash.png",
@@ -21,6 +24,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.tanishq.tiffinmate"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "9a54f141-e55b-4ec2-890d-e121c4a59855"
+      }
     }
   }
 }

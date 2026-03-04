@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { useTheme } from '../theme';
-import { BASE_URL, MEMBERS } from '../config';
+import { useAuth } from '../context/AuthContext';
+import { BASE_URL } from '../config';
 
 const TIMES = ['morning', 'night'];
 const TYPES = ['full', 'half'];
@@ -32,10 +33,10 @@ function formatDateLabel(date) {
 
 export default function AddOrderScreen() {
   const { dark, setDark, C } = useTheme();
+  const { user, logout } = useAuth();
   const s = makeStyles(C);
 
   const dates = getLast30Days();
-  const [name, setName] = useState(MEMBERS[0]);
   const [time, setTime] = useState(TIMES[0]);
   const [type, setType] = useState(TYPES[0]);
   const [selectedDate, setSelectedDate] = useState(dates[0]);
@@ -43,25 +44,18 @@ export default function AddOrderScreen() {
   const [loading, setLoading] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-  const headerTranslate = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [0, -20],
-    extrapolate: 'clamp',
-  });
+  const headerOpacity = scrollY.interpolate({ inputRange: [0, 60], outputRange: [1, 0], extrapolate: 'clamp' });
+  const headerTranslate = scrollY.interpolate({ inputRange: [0, 60], outputRange: [0, -20], extrapolate: 'clamp' });
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      await axios.post(`${BASE_URL}/orders`, {
-        name, time, type,
-        date: selectedDate.toISOString(),
-      });
-      Alert.alert('✅ Order Added', `${name} · ${time} · ${type} · ${formatDateLabel(selectedDate)}`);
+      await axios.post(
+        `${BASE_URL}/orders`,
+        { time, type, date: selectedDate.toISOString() },
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      Alert.alert('✅ Order Added', `${user.name} · ${time} · ${type} · ${formatDateLabel(selectedDate)}`);
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to add order. Is backend running?';
       Alert.alert('❌ Error', msg);
@@ -71,11 +65,7 @@ export default function AddOrderScreen() {
   };
 
   const Chip = ({ label, selected, onPress, icon }) => (
-    <TouchableOpacity
-      style={[s.chip, selected && s.chipSelected]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={[s.chip, selected && s.chipSelected]} onPress={onPress} activeOpacity={0.7}>
       {icon && <Text style={s.chipIcon}>{icon}</Text>}
       <Text style={[s.chipText, selected && s.chipTextSelected]}>{label}</Text>
     </TouchableOpacity>
@@ -88,31 +78,36 @@ export default function AddOrderScreen() {
       <View style={s.topBar}>
         <Animated.View style={{ opacity: headerOpacity, transform: [{ translateY: headerTranslate }] }}>
           <Text style={s.headerTitle}>Add Order</Text>
-          <Text style={s.headerSub}>Log today's tiffin</Text>
+          <Text style={s.headerSub}>Hey {user.name} 👋</Text>
         </Animated.View>
-        <TouchableOpacity style={s.themeBtn} onPress={() => setDark(!dark)}>
-          <Text style={s.themeBtnText}>{dark ? '☀️' : '🌙'}</Text>
-        </TouchableOpacity>
+        <View style={s.topBarRight}>
+          <TouchableOpacity style={s.themeBtn} onPress={() => setDark(!dark)}>
+            <Text style={s.themeBtnText}>{dark ? '☀️' : '🌙'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.logoutBtn} onPress={logout}>
+            <Text style={s.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Animated.ScrollView
         contentContainerStyle={s.container}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>👤 Who's ordering?</Text>
-          <View style={s.chipRow}>
-            {MEMBERS.map((n) => (
-              <Chip key={n} label={n} selected={name === n} onPress={() => setName(n)} />
-            ))}
+        {/* Who's ordering — auto from auth */}
+        <View style={s.userCard}>
+          <View style={s.userAvatar}>
+            <Text style={s.userAvatarText}>{user.name[0]}</Text>
+          </View>
+          <View>
+            <Text style={s.userCardLabel}>ORDERING AS</Text>
+            <Text style={s.userCardName}>{user.name}</Text>
           </View>
         </View>
 
+        {/* Date */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>📅 Date</Text>
           <TouchableOpacity style={s.dateButton} onPress={() => setShowDatePicker(!showDatePicker)} activeOpacity={0.8}>
@@ -134,9 +129,7 @@ export default function AddOrderScreen() {
                       style={[s.dateItem, isSel && s.dateItemSelected]}
                       onPress={() => { setSelectedDate(d); setShowDatePicker(false); }}
                     >
-                      <Text style={[s.dateItemText, isSel && s.dateItemTextSelected]}>
-                        {formatDateLabel(d)}
-                      </Text>
+                      <Text style={[s.dateItemText, isSel && s.dateItemTextSelected]}>{formatDateLabel(d)}</Text>
                       <Text style={s.dateItemSub}>
                         {d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
                       </Text>
@@ -148,6 +141,7 @@ export default function AddOrderScreen() {
           )}
         </View>
 
+        {/* Time */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>⏰ Meal Time</Text>
           <View style={s.chipRow}>
@@ -158,6 +152,7 @@ export default function AddOrderScreen() {
           </View>
         </View>
 
+        {/* Type */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>🍽️ Tiffin Type</Text>
           <View style={s.chipRow}>
@@ -168,18 +163,17 @@ export default function AddOrderScreen() {
           </View>
         </View>
 
+        {/* Preview */}
         <View style={s.previewCard}>
           <Text style={s.previewLabel}>ORDER PREVIEW</Text>
           <Text style={s.previewText}>
-            {name} · {TIME_ICON[time]} {time} · {TYPE_ICON[type]} {type} · {formatDateLabel(selectedDate)}
+            {user.name} · {TIME_ICON[time]} {time} · {TYPE_ICON[type]} {type} · {formatDateLabel(selectedDate)}
           </Text>
         </View>
 
         <TouchableOpacity
           style={[s.submitBtn, loading && { opacity: 0.6 }]}
-          onPress={handleSubmit}
-          disabled={loading}
-          activeOpacity={0.85}
+          onPress={handleSubmit} disabled={loading} activeOpacity={0.85}
         >
           <Text style={s.submitText}>{loading ? 'Adding…' : 'Add Order'}</Text>
         </TouchableOpacity>
@@ -192,54 +186,64 @@ const makeStyles = (C) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   topBar: {
     flexDirection: 'row', alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 22,
+    justifyContent: 'space-between', paddingHorizontal: 22,
     paddingTop: Platform.OS === 'android' ? 14 : 10,
-    paddingBottom: 12,
-    backgroundColor: C.headerBg,
+    paddingBottom: 12, backgroundColor: C.headerBg,
   },
   headerTitle: { fontSize: 26, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
   headerSub: { fontSize: 12, color: C.subtext, marginTop: 2 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   themeBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: C.card, borderWidth: 1,
-    borderColor: C.border, alignItems: 'center',
-    justifyContent: 'center', marginTop: 2,
+    width: 40, height: 40, borderRadius: 20, backgroundColor: C.card,
+    borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center',
   },
   themeBtnText: { fontSize: 18 },
+  logoutBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' },
+  logoutText: { fontSize: 12, fontWeight: '700', color: '#dc2626' },
+
   container: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 48 },
-  section: { marginBottom: 24 },
-  sectionLabel: {
-    fontSize: 10, fontWeight: '700', color: C.muted,
-    marginBottom: 10, letterSpacing: 1.2, textTransform: 'uppercase',
+
+  userCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.accentSoft, borderRadius: 14,
+    padding: 14, marginBottom: 22,
+    borderWidth: 1, borderColor: C.border,
   },
+  userAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: C.accent, alignItems: 'center',
+    justifyContent: 'center', marginRight: 14,
+  },
+  userAvatarText: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  userCardLabel: { fontSize: 9, fontWeight: '700', color: C.muted, letterSpacing: 1.2 },
+  userCardName: { fontSize: 17, fontWeight: '800', color: C.accent, marginTop: 2 },
+
+  section: { marginBottom: 24 },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: C.muted, marginBottom: 10, letterSpacing: 1.2, textTransform: 'uppercase' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chip: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 16,
-    borderRadius: 12, borderWidth: 1.5,
-    borderColor: C.border, backgroundColor: C.card,
+    borderRadius: 12, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.card,
   },
   chipSelected: { backgroundColor: C.accent, borderColor: C.accent },
   chipIcon: { fontSize: 14, marginRight: 6 },
   chipText: { color: C.subtext, fontSize: 14, fontWeight: '600' },
   chipTextSelected: { color: '#fff', fontWeight: '700' },
+
   dateButton: {
-    backgroundColor: C.card, borderRadius: 14,
-    borderWidth: 1.5, borderColor: C.border,
-    padding: 14, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.card, borderRadius: 14, borderWidth: 1.5,
+    borderColor: C.border, padding: 14, flexDirection: 'row', alignItems: 'center',
   },
   dateButtonText: { fontSize: 15, fontWeight: '700', color: C.accent, flex: 1 },
   dateButtonSub: { fontSize: 11, color: C.muted, marginRight: 8 },
   dateChevron: { color: C.accent, fontSize: 11 },
   dateDropdown: {
-    backgroundColor: C.card, borderRadius: 14,
-    borderWidth: 1.5, borderColor: C.border,
-    marginTop: 6, overflow: 'hidden',
+    backgroundColor: C.card, borderRadius: 14, borderWidth: 1.5,
+    borderColor: C.border, marginTop: 6, overflow: 'hidden',
   },
   dateItem: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12, paddingHorizontal: 16,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
@@ -247,16 +251,14 @@ const makeStyles = (C) => StyleSheet.create({
   dateItemText: { fontSize: 14, color: C.text, fontWeight: '600' },
   dateItemTextSelected: { color: C.accent },
   dateItemSub: { fontSize: 12, color: C.muted },
+
   previewCard: {
-    backgroundColor: C.accentSoft, borderRadius: 14,
-    padding: 14, marginBottom: 20, alignItems: 'center',
-    borderWidth: 1, borderColor: C.border,
+    backgroundColor: C.accentSoft, borderRadius: 14, padding: 14,
+    marginBottom: 20, alignItems: 'center', borderWidth: 1, borderColor: C.border,
   },
   previewLabel: { fontSize: 9, fontWeight: '800', color: C.muted, letterSpacing: 1.4, marginBottom: 5 },
   previewText: { color: C.accent, fontSize: 13, fontWeight: '600' },
-  submitBtn: {
-    backgroundColor: C.accent, borderRadius: 16,
-    padding: 17, alignItems: 'center',
-  },
+
+  submitBtn: { backgroundColor: C.accent, borderRadius: 16, padding: 17, alignItems: 'center' },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.4 },
 });
